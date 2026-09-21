@@ -1,0 +1,107 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  name               String
+  email              String           @unique
+  password           String?
+  currency           String           @default("INR")
+  monthlyIncome      Float            @default(0.0)
+  monthlyRent        Float            @default(0.0)
+  otherFixedExpenses Float            @default(0.0)
+  savingsGoal        Float            @default(0.0)
+  salaryCreditDay    Int              @default(1)
+  createdAt          DateTime         @default(now())
+  budgets            CategoryBudget[]
+  expenses           Expense[]
+  bankStatements     BankStatement[]
+  rebalances         RebalanceEvent[]
+  dealMatches        DealMatch[]
+}
+
+model CategoryBudget {
+  id              String           @id @default(uuid())
+  userId          String
+  categoryName    String           // e.g., 'Rent', 'Groceries', 'Petrol', 'Shopping', 'Dining Out', 'Savings'
+  isEssential     Boolean          @default(true) // true = Needs/Rent/Savings (UNTOUCHABLE), false = Wants (REALLOCATABLE)
+  allocatedAmount Float
+  currentSpent    Float            @default(0.0)
+  monthYear       String           // Format: 'YYYY-MM'
+  createdAt       DateTime         @default(now())
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses        Expense[]
+  fromRebalances  RebalanceEvent[] @relation("FromCategory")
+  toRebalances    RebalanceEvent[] @relation("ToCategory")
+
+  @@unique([userId, categoryName, monthYear])
+}
+
+model Expense {
+  id            String          @id @default(uuid())
+  userId        String
+  budgetId      String?
+  amount        Float
+  merchant      String
+  paymentMethod String          @default("CASH") // CASH, GPAY_UPI, CARD, NET_BANKING
+  source        String          @default("MANUAL_CASH") // MANUAL_CASH, AI_CHAT, PDF_PARSE, CSV_PARSE
+  notes         String?
+  expenseDate   DateTime        @default(now())
+  createdAt     DateTime        @default(now())
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  budget        CategoryBudget? @relation(fields: [budgetId], references: [id], onDelete: SetNull)
+}
+
+model BankStatement {
+  id                 String    @id @default(uuid())
+  userId             String
+  fileName           String
+  fileType           String
+  status             String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  extractedItemCount Int       @default(0)
+  parsedAt           DateTime?
+  uploadedAt         DateTime  @default(now())
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RebalanceEvent {
+  id                String         @id @default(uuid())
+  userId            String
+  fromBudgetId      String
+  toBudgetId        String
+  amountReallocated Float
+  reason            String
+  timestamp         DateTime       @default(now())
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromCategory      CategoryBudget @relation("FromCategory", fields: [fromBudgetId], references: [id])
+  toCategory        CategoryBudget @relation("ToCategory", fields: [toBudgetId], references: [id])
+}
+
+model Deal {
+  id                 String      @id @default(uuid())
+  platformName       String      // e.g., 'Blinkit', 'Zepto', 'Amazon', 'Swiggy', 'HP Fuel'
+  category           String      // e.g., 'Groceries', 'Dining Out', 'Petrol', 'Shopping'
+  title              String
+  promoCode          String?
+  discountPercentage Float?
+  affiliateUrl       String
+  validUntil         DateTime?
+  matches            DealMatch[]
+}
+
+model DealMatch {
+  id            String   @id @default(uuid())
+  userId        String
+  dealId        String
+  triggerReason String   // e.g., 'Groceries budget remaining is under 20%'
+  isRedeemed    Boolean  @default(false)
+  suggestedAt   DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deal          Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+}
